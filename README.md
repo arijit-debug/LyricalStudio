@@ -37,10 +37,10 @@ Inspired by the [Cotodama Lyric Speaker](https://cotodama-speaker.com/). Not aff
 
 ## What it does
 
-- **Search and play almost any song.** Playback goes through YouTube's official embedded player, shown as a small video tile. Searches both official distributor tracks and independent video uploads with smart phonetic & title relevance ranking.
-- **Repeat & "Play Next" Queue:** Loop any song with one click (or key L), and insert tracks to play next directly from search results without interrupting playback.
+- **Search and play almost any song.** Playback goes through YouTube's official embedded player, shown as a small video tile. Results include album tracks and video uploads (live versions, covers, mashups), with the best title matches first, even when the spelling differs a little.
+- **Loop and play next.** Repeat a song with one click (or `L`), and add any search result to play right after the current song.
 - **Lyrics that move with the music:** synced line by line, and word by word where the lyrics source has word timings.
-- **Instant Transliteration:** Toggle button (or key `T`) converts non-Latin scripts (Hindi to Hinglish, Punjabi to Roman Punjabi, Gujarati to Gujlish, Urdu to Roman Urdu) to Latin characters on the fly with zero audio timing disruption, powered by a fast client-side phonetics engine.
+- **Lyrics in Latin letters.** The **En** button (or `T`) shows Hindi as Hinglish, and Punjabi, Gujarati and Urdu in Roman script, keeping the same timing. It runs in your browser; a site owner can optionally add a Gemini key for better romanization of Urdu, Japanese, Chinese and Korean.
 - **Seven text layouts:** Stack, Slide, Zoom, Letters, Scatter, Graph and Flow. "Auto style" picks one for each line from the song's genre, pace and chorus, or you can choose one yourself.
 - **Graph draws one continuous vine:** each new line grows out of the last one, the camera follows it, and the previous two lines linger above, dimmed and softly blurred. While Graph plays, the controls and cursor fade away after 3 seconds without input (move the mouse to bring them back); the video tile stays visible and moves down into the corner.
 - **Always gently in motion:** the lyrics float a little all the time, even between words and during instrumental parts.
@@ -70,7 +70,7 @@ Inspired by the [Cotodama Lyric Speaker](https://cotodama-speaker.com/). Not aff
 1. Open **[lyricalstudio.vercel.app](https://lyricalstudio.vercel.app)** in a desktop browser.
 2. Press **Ctrl K** (or **/**) and type a song or artist.
 3. Click a result. The song starts and the lyrics stage opens.
-4. Use the bar at the bottom to play or pause, skip, seek, like a song (♥), nudge the sync or pick a lyric style.
+4. Use the bar at the bottom to play or pause, skip, seek, loop, like a song (♥), nudge the sync, pick a lyric style, or switch the lyrics to Latin letters (**En**).
 5. The buttons at the top right open **Up next**, enlarge the **video**, or go **full screen**.
 
 LyricalStudio is designed for desktop and laptop browsers (Chrome, Edge, Firefox, Safari). On phones it shows a "best on a bigger screen" notice, which you can dismiss.
@@ -84,7 +84,7 @@ LyricalStudio is designed for desktop and laptop browsers (Chrome, Edge, Firefox
 | ← / → | Back / forward 5 seconds |
 | [ / ] | Lyrics earlier / later by 0.25 s |
 | L | Toggle loop / repeat |
-| T | Toggle Hinglish / Roman transliteration |
+| T | Lyrics in Latin letters (Hinglish, Roman Urdu…) on / off |
 | F | Full screen |
 | Shift F | Frame-rate meter |
 | Esc | Close search, shrink the video |
@@ -167,7 +167,7 @@ Restart `npm run dev` after editing `.env.local`. Git ignores this file, so your
 | `YOUTUBE_API_KEY` | Uses the official [YouTube Data API](https://developers.google.com/youtube/v3) for search. See [the next section](#getting-a-youtube-data-api-key). | Not set: search uses youtubei.js |
 | `YOUTUBEI_ENABLED` | Set to `false` to never use youtubei.js, the unofficial YouTube Music client. Turns off the YouTube Music home feed and playlists. Recommended for public sites, together with `YOUTUBE_API_KEY`. | On |
 | `YOUTUBE_SEARCHES_PER_IP_PER_DAY` | How many official-API searches one visitor can trigger per day. Cached searches don't count. Stops one person from using up the whole site's quota. | `25` |
-| `GEMINI_API_KEY` | Optional [Google Gemini API](https://aistudio.google.com/) key for AI Romanization of complex scripts (Urdu, Japanese, Chinese, Korean). On 429 rate limits, falls back to the client-side rule engine. | Not set: uses client-side rule engine |
+| `GEMINI_API_KEY` | A [Google Gemini API](https://aistudio.google.com/apikey) key for AI romanization of Urdu, Japanese, Chinese and Korean lyrics. Only lyrics text is sent, at most 30 songs per visitor per day. When Gemini is busy or the key isn't set, the built-in romanizer is used. | Not set: built-in romanizer only |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Shares the per-visitor rate limits across all server instances, using a free [Upstash](https://upstash.com) Redis database. | Each instance counts on its own |
 | `RATE_LIMIT` | Set to `off` to disable rate limiting. | On |
 
@@ -219,6 +219,7 @@ Lyrics stage ◀── synced lyrics ─────────── /api/lyri
 Background colors ◀── artwork ──────────── /api/image   (artwork proxy for color extraction)
 Genre (picks styles) ◀─────────────────── /api/meta    → iTunes Search API
 Up next ◀────────────────────────────────── /api/radio
+Romanized lyrics (optional) ◀──────────── /api/romanize → Google Gemini (only with GEMINI_API_KEY)
 Likes, history, settings → browser localStorage (no database, no accounts)
 ```
 
@@ -229,6 +230,7 @@ Likes, history, settings → browser localStorage (no database, no accounts)
 | Synced lyrics | [LRCLIB](https://lrclib.net), the main source (line-by-line timing) |
 | Word-by-word timing | [lrcmux](https://lrcmux.dev), used only when its timing matches LRCLIB's |
 | Artwork and genre | [iTunes Search API](https://performance-partners.apple.com/search-api) |
+| Romanization | Built into the app (`src/lib/lyrics/transliterate.ts`); optionally [Google Gemini](https://ai.google.dev/) for Urdu, Japanese, Chinese and Korean |
 
 LyricalStudio never downloads, stores or redistributes audio.
 
@@ -236,12 +238,12 @@ LyricalStudio never downloads, stores or redistributes audio.
 
 | Folder | What's there |
 | --- | --- |
-| `src/app/api/` | Server routes: search, lyrics, meta, image, radio, home, playlist |
+| `src/app/api/` | Server routes: search, lyrics, meta, image, radio, home, playlist, romanize |
 | `src/app/privacy/` | Privacy policy and terms page |
 | `src/proxy.ts` | Per-visitor rate limits on `/api/*` |
 | `src/components/` | The app shell, player, lyrics stage, search panel and home screen |
 | `src/templates/` | The lyric animation layouts, one per file. `chooseTemplate()` in `index.ts` picks one per line. |
-| `src/lib/lyrics/` | LRC parsing, word-timing estimates, the lyrics cache |
+| `src/lib/lyrics/` | LRC parsing, word-timing estimates, the lyrics cache, romanization |
 | `src/lib/search/` | Search backends (official API and youtubei.js) |
 | `src/lib/clock/` | Smooths the YouTube player's coarse time reports, so lyrics stay in sync |
 
@@ -251,6 +253,7 @@ LyricalStudio never downloads, stores or redistributes audio.
 - **Some songs won't play** because the label blocks embedding. LyricalStudio tries another upload of the same song, then skips it.
 - **YouTube may show ads** before songs, as in any embedded YouTube player.
 - **Captions depend on YouTube.** Many videos have none, and auto-generated ones can be wrong.
+- **Romanization is approximate.** It follows spelling rules, so some words come out differently from how people usually write them (for example "gaddee" for "gaddi").
 - **Lyrics aren't guaranteed.** They come from free community services, so some songs have none, only approximate timing, or mistakes. When a service is down, recently played songs still have lyrics from the browser cache.
 - **The tab must stay open** for music to play. There's no background or offline playback.
 - **Desktop-first.** Phones work, but the layout is made for larger screens.
@@ -289,6 +292,7 @@ Found a security problem? Please report it privately, as described in [SECURITY.
 - Playback: [YouTube](https://www.youtube.com). Search: [YouTube Data API](https://developers.google.com/youtube/v3) and [youtubei.js](https://github.com/LuanRT/YouTube.js).
 - Artwork and genres: [iTunes Search API](https://performance-partners.apple.com/search-api).
 - Fonts: system fonts, with [Inter](https://rsms.me/inter/), [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) and [Noto Sans Devanagari](https://fonts.google.com/noto/specimen/Noto+Sans+Devanagari).
+- Contributors: loop, play next, search ranking and romanization by [Shreedhar Joshi (@Dynamo-SJoshi)](https://github.com/Dynamo-SJoshi). Thank you!
 - Design inspiration: the [Cotodama Lyric Speaker](https://cotodama-speaker.com/) and Apple's design language.
 
 The demo GIFs show short excerpts of songs and their artwork for illustration only. All rights belong to their owners.

@@ -29,7 +29,7 @@ npm start        # serve the production build
 
 ## Server side
 
-- API routes in src/app/api are all read-only GETs: search, radio, home, playlist (YouTube), lyrics (LRCLIB/lrcmux), meta (iTunes), image (artwork proxy with host allowlist, redirect re-checks, raster-only types, 2 MB cap).
+- API routes in src/app/api are all read-only GETs: search, radio, home, playlist (YouTube), lyrics (LRCLIB/lrcmux), romanize (optional Gemini: takes title/artist, fetches the lyrics itself, single key, 30 songs per IP per day), meta (iTunes), image (artwork proxy with host allowlist, redirect re-checks, raster-only types, 2 MB cap).
 - `src/lib/search/index.ts` picks the search backend: the official YouTube Data API when `YOUTUBE_API_KEY` is set (cached, with a per-visitor daily budget of real API calls), otherwise youtubei.js. `YOUTUBEI_ENABLED=false` disables youtubei.js entirely (no home feed or playlists). Routes pass `clientIp(request.headers)` for the budget.
 - `src/proxy.ts` (Next 16's replacement for middleware) applies per-IP per-minute limits on `/api/*`. Counters come from `src/lib/rate-limit.ts`: Upstash Redis REST if configured, otherwise per-instance memory. Use `hit(name, windowSec)` for new limits.
 - Security headers are set in `next.config.ts`. Config headers override route headers, so `/api/image`'s sandbox CSP is defined there too.
