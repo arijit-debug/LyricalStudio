@@ -42,7 +42,7 @@ Inspired by the [Cotodama Lyric Speaker](https://cotodama-speaker.com/). Not aff
 - **Lyrics that move with the music:** synced line by line, and word by word where the lyrics source has word timings.
 - **Lyrics in Latin letters.** The **En** button (or `T`) shows Hindi as Hinglish, and Punjabi, Gujarati and Urdu in Roman script, keeping the same timing. It runs in your browser; a site owner can optionally add a Gemini key for better romanization of Urdu, Japanese, Chinese and Korean.
 - **Seven text layouts:** Stack, Slide, Zoom, Letters, Scatter, Graph and Flow. "Auto style" picks one for each line from the song's genre, pace and chorus, or you can choose one yourself.
-- **Graph draws one continuous vine:** each new line grows out of the last one, the camera follows it, and the previous two lines linger above, dimmed and softly blurred. While Graph plays, the controls and cursor fade away after 3 seconds without input (move the mouse to bring them back); the video tile stays visible and moves down into the corner.
+- **Graph draws one continuous vine:** each new line grows out of the last one, the camera follows it, and the previous two lines linger above, dimmed and softly blurred. **Duets get two vines:** when a song credits more than one singer, verses alternate between a left and a right vine, and they merge for the chorus. Backing vocals in parentheses are drawn as small lines. While Graph plays, the controls and cursor fade away after 3 seconds without input (move the mouse to bring them back); the video tile stays visible and moves down into the corner.
 - **Always gently in motion:** the lyrics float a little all the time, even between words and during instrumental parts.
 - **YouTube captions for songs without lyrics:** when no lyrics are found, a button turns on the video's own captions (when YouTube has them), and the video grows so they're readable.
 - **Colors from the album art:** white lyrics with vivid highlights on a few words per line, picked at random every time the song plays.
@@ -253,6 +253,7 @@ LyricalStudio never downloads, stores or redistributes audio.
 - **Some songs won't play** because the label blocks embedding. LyricalStudio tries another upload of the same song, then skips it.
 - **YouTube may show ads** before songs, as in any embedded YouTube player.
 - **Captions depend on YouTube.** Many videos have none, and auto-generated ones can be wrong.
+- **Duet vines are a guess.** Lyrics services don't say who sings which line, so Graph alternates verses between the two vines, which matches most duets but not every song.
 - **Romanization is approximate.** It follows spelling rules, so some words come out differently from how people usually write them (for example "gaddee" for "gaddi").
 - **Lyrics aren't guaranteed.** They come from free community services, so some songs have none, only approximate timing, or mistakes. When a service is down, recently played songs still have lyrics from the browser cache.
 - **The tab must stay open** for music to play. There's no background or offline playback.

@@ -7,6 +7,7 @@ import type { LyricLine, Track } from "@/lib/types";
 import type { Palette } from "@/lib/theme/palette";
 import { hashString } from "@/lib/theme/palette";
 import { detectLang, lineAt } from "@/lib/lyrics/parse";
+import { assignVoices, isDuetTrack } from "@/lib/lyrics/voices";
 import type { LyricsStatus } from "@/lib/lyrics/useTrackData";
 import type { CaptionsState } from "@/components/player/PlayerProvider";
 import { chooseScene, isGraph, TEMPLATES, type Scene, type TemplateChoice } from "@/templates";
@@ -44,6 +45,9 @@ type Props = {
 export function LyricsStage({ track, lines, status, palette, seed, genre, lyricsCredit, offset, template, getTime, captions = "off", onCaptions }: Props) {
   const [pos, setPos] = useState<Position>({ mode: "intro", line: -1, revealed: 0 });
   const posRef = useRef(pos);
+  // who sings each line, for Graph's vines (duets get two)
+  const duet = isDuetTrack(track);
+  const voices = useMemo(() => assignVoices(lines, duet), [lines, duet]);
 
   useEffect(() => {
     let raf = 0;
@@ -171,7 +175,7 @@ export function LyricsStage({ track, lines, status, palette, seed, genre, lyrics
     unclipped = true;
     content = (
       <div className="absolute inset-0 flex items-center justify-center uppercase">
-        <GraphStream lines={lines} from={from} to={to} current={pos.line} revealed={pos.revealed} palette={palette} seed={seed} />
+        <GraphStream lines={lines} from={from} to={to} current={pos.line} revealed={pos.revealed} palette={palette} seed={seed} voices={voices} />
         {line.sub && <Subtitle key={pos.line} text={line.sub} />}
       </div>
     );

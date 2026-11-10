@@ -3,6 +3,7 @@
 import { memo, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotionConfig } from "motion/react";
 import type { LyricLine } from "@/lib/types";
+import type { Voice } from "@/lib/lyrics/voices";
 import type { Palette } from "@/lib/theme/palette";
 import { hashString } from "@/lib/theme/palette";
 import { useLiteMode } from "@/lib/perf/useLiteMode";
@@ -40,6 +41,10 @@ type Placed = {
   first: number;
   last: number;
   seed: number;
+  /** which of the palette's accents its branches use */
+  color: number;
+  /** where its bridge branches start (the vine tips it grows from), each with its color */
+  from: { pt: Pt; color: number }[];
 };
 
 /** Each line fits in this share of the stage height, leaving room above for the previous one. */
@@ -127,20 +132,101 @@ function lastTrunk(nodes: TreeNode[]) {
   return nodes.length - 1;
 }
 
-/** World positions for lines[from..to]: each tree grows on from the one before, in a random direction. */
-function placeRun(lines: LyricLine[], from: number, to: number, songSeed: number, W: number, H: number): Placed[] {
+/** Echo lines (all in parentheses) fit in this smaller share of the stage height, with type this much smaller. */
+const ECHO_SHARE = 0.3;
+const ECHO_TYPE = 0.55;
+
+/** Duets: the gap between the two singers' lanes, as a fraction of the width. */
+const LANE_GAP = 0.06;
+
+/** Duets: a vine tip more than this many lines back is off screen; nothing grows from it. */
+const TIP_REACH = 3;
+
+/** Duets: the palette accent each voice's branches use. */
+const VOICE_COLOR: Record<Voice, number> = { a: 0, b: 1, both: 2, echo: 2, solo: 0 };
+
+/**
+ * Which earlier lines (indices into lines) a line's bridges grow from: the tips of the
+ * vines it continues. An echo line, and the line right after one, grow from the line just
+ * before them, so the vine runs through the echo instead of crossing it. In a duet each
+ * singer continues their own vine; a chorus after a verse grows out of both vines (they
+ * merge), and after a chorus both singers grow on from it (they split again).
+ */
+function sourcesOf(k: number, from: number, voices: Voice[] | null, duet: boolean): number[] {
+  if (k === from) return [];
+  const v = voices?.[k] ?? "solo";
+  if (v === "echo" || voices?.[k - 1] === "echo") return [k - 1];
+  const main = (j: number) => voices?.[j] !== "echo";
+  const lastWhere = (ok: (j: number) => boolean) => {
+    for (let j = k - 1; j >= from; j--) if (main(j) && ok(j)) return j;
+    return -1;
+  };
+  const prevMain = lastWhere(() => true);
+  if (!duet || !voices) return [prevMain >= 0 ? prevMain : k - 1];
+  // a vine tip only counts while it's still on screen (lingering); an older one would draw
+  // a long branch in from nowhere, so the line grows from the line before it instead
+  const tip = (x: Voice) => {
+    const j = lastWhere((j) => voices[j] === x || voices[j] === "both");
+    return j >= k - TIP_REACH ? j : -1;
+  };
+  let out: number[];
+  if (v === "both") out = prevMain >= 0 && voices[prevMain] === "both" ? [prevMain] : [tip("a"), tip("b")];
+  else out = [tip(v)];
+  out = [...new Set(out.filter((j) => j >= 0))];
+  return out.length ? out : [prevMain >= 0 ? prevMain : k - 1];
+}
+
+/**
+ * World positions for lines[from..to]: each tree grows on from the one before.
+ *
+ * Normally each line goes below the last one, shifted sideways at random. In a duet the
+ * window is split into two lanes, one per singer; choruses use the full width. A line in
+ * the other lane can start level with the middle of the line before it, so the two
+ * singers read like a conversation, but never overlaps an earlier line.
+ */
+function placeRun(lines: LyricLine[], from: number, to: number, songSeed: number, W: number, H: number, voices: Voice[] | null): Placed[] {
   const out: Placed[] = [];
+  const duet = !!voices?.some((v) => v === "a" || v === "b");
+  const laneW = W * (0.5 - LANE_GAP / 2);
+  // lane (left edge and width) of each voice
+  const laneOf = (v: Voice): { l: number; w: number } => {
+    if (v === "a") return { l: 0, w: laneW };
+    if (v === "b") return { l: W - laneW, w: laneW };
+    return { l: 0, w: W };
+  };
+  // the voice each placed line is drawn as: an echo goes to the lane across from the line it answers
+  const drawnAs: Voice[] = [];
   for (let k = from; k <= to; k++) {
     const line = lines[k];
+    const v = voices?.[k] ?? "solo";
     const seed = (songSeed ^ hashString(line.text)) >>> 0;
-    const t = fitTree(line.words, W, H, seed, LINE_SHARE, true);
+    const r = rng(seed ^ 0x9e3779b9);
+    const prev = out.at(-1);
+    const prevAs = drawnAs.at(-1);
+    const as: Voice = v === "echo" && duet ? (prevAs === "b" ? "a" : "b") : v;
+    drawnAs.push(as);
+    const lane = duet ? laneOf(as) : { l: 0, w: W };
+    const t = fitTree(line.words, lane.w, H, seed, v === "echo" ? ECHO_SHARE : LINE_SHARE, true, v === "echo" ? W * ECHO_TYPE : W);
+    const w = (t.box.r - t.box.l) * t.s;
     const first = firstTrunk(t.nodes);
     let ox = 0;
     let oy = 0;
-    const prev = out.at(-1);
-    if (prev) {
-      const r = rng(seed ^ 0x9e3779b9);
-      const w = (t.box.r - t.box.l) * t.s;
+    if (duet) {
+      // centered in its lane, nudged a little at random
+      const slack = Math.max(0, lane.w - w);
+      const lx = lane.l + slack / 2 + (r() - 0.5) * slack * 0.5;
+      let ty = 0;
+      if (prev) {
+        const gap = H * LINE_GAP * (0.6 + r());
+        const prevLane = laneOf(prevAs!);
+        const otherLane = prevLane.l !== lane.l || prevLane.w !== lane.w;
+        ty = otherLane && lane.w < W && prevLane.w < W ? (prev.box.t + prev.box.b) / 2 : prev.box.b + gap;
+        // never overlap an earlier line in the same columns
+        for (const q of out) if (q.box.r > lx - W * 0.02 && q.box.l < lx + w + W * 0.02) ty = Math.max(ty, q.box.b + gap);
+      }
+      ox = lx - t.box.l * t.s;
+      oy = ty - t.box.t * t.s;
+    } else if (prev) {
       const prevMid = (prev.box.l + prev.box.r) / 2;
       // the new tree goes below the previous one, shifted sideways by a random amount;
       // stacking keeps the lingering line on screen next to the new one
@@ -151,7 +237,19 @@ function placeRun(lines: LyricLine[], from: number, to: number, songSeed: number
       ox = lx - t.box.l * t.s;
       oy = ty - t.box.t * t.s;
     }
+    const sources = sourcesOf(k, from, voices, duet);
+    if (voices) {
+      // a bridge that runs back to the left needs enough drop to swing above the new line
+      // (organicPath) instead of cutting through its words; small echo lines leave little
+      for (const j of sources) {
+        const q = out[j - from];
+        const a = q.nodes[q.last];
+        const b = { x: ox + t.nodes[first].x * t.s, y: oy + t.nodes[first].y * t.s };
+        if (a.x > b.x) oy += Math.max(0, (a.x - b.x) * 0.3 - (b.y - a.y));
+      }
+    }
     const nodes = t.nodes.map((n) => ({ ...n, x: ox + n.x * t.s, y: oy + n.y * t.s, font: stepFont(n.font * t.s) }));
+    const color = duet ? VOICE_COLOR[as] : seed % 3;
     out.push({
       nodes,
       box: { l: ox + t.box.l * t.s, t: oy + t.box.t * t.s, r: ox + t.box.r * t.s, b: oy + t.box.b * t.s },
@@ -159,6 +257,12 @@ function placeRun(lines: LyricLine[], from: number, to: number, songSeed: number
       first,
       last: lastTrunk(nodes),
       seed,
+      color,
+      // a merge's bridges keep each singer's color; otherwise the bridge takes the new line's
+      from: sources.map((j) => {
+        const q = out[j - from];
+        return { pt: q.nodes[q.last], color: duet && v === "both" ? q.color : color };
+      }),
     });
   }
   return out;
@@ -175,6 +279,8 @@ type Props = {
   palette: Palette;
   /** song seed; each line's seed is derived from it like everywhere else */
   seed: number;
+  /** who sings each line (duets get two vines, echo lines are drawn small); null: one vine as always */
+  voices?: Voice[] | null;
 };
 
 type Frame = { vw: number; vh: number; left: number; top: number; fitW: number; fitH: number };
@@ -211,7 +317,7 @@ function useFrame() {
   return [ref, frame] as const;
 }
 
-export function GraphStream({ lines, from, to, current, revealed, palette, seed }: Props) {
+export function GraphStream({ lines, from, to, current, revealed, palette, seed, voices = null }: Props) {
   const [ref, frame] = useFrame();
   const { vw, vh, fitW, fitH } = frame;
   const reduce = useReducedMotionConfig();
@@ -219,8 +325,8 @@ export function GraphStream({ lines, from, to, current, revealed, palette, seed 
   const ready = vw > 0 && fitW > 0;
 
   const placed = useMemo(
-    () => (ready ? placeRun(lines, from, to, seed, fitW, fitH) : []),
-    [lines, from, to, seed, fitW, fitH, ready],
+    () => (ready ? placeRun(lines, from, to, seed, fitW, fitH, voices) : []),
+    [lines, from, to, seed, fitW, fitH, ready, voices],
   );
   const k = current - from;
   const cur = placed[k];
@@ -240,9 +346,11 @@ export function GraphStream({ lines, from, to, current, revealed, palette, seed 
   }, [placed, lines, from]);
 
   /** where the camera rests for line i: that line centered on the window */
+  // duets: both lanes stay on screen, so the camera keeps the lanes centered sideways
+  const lanes = !!voices?.some((v) => v === "a" || v === "b");
   const baseCam = (i: number) => {
     const p = placed[i];
-    return { x: vw / 2 - (p.box.l + p.box.r) / 2, y: vh / 2 - (p.box.t + p.box.b) / 2 };
+    return { x: vw / 2 - (lanes ? fitW / 2 : (p.box.l + p.box.r) / 2), y: vh / 2 - (p.box.t + p.box.b) / 2 };
   };
 
   // camera: center the current line, drifting gently toward the newest word
@@ -253,7 +361,7 @@ export function GraphStream({ lines, from, to, current, revealed, palette, seed 
     const bw = cur.box.r - cur.box.l;
     const active = cur.nodes[Math.max(0, Math.min(revealed, cur.nodes.length) - 1)];
     if (active) {
-      const slackX = Math.max(0, (fitW * (1 - 2 * SAFE_X) - bw) / 2);
+      const slackX = lanes ? fitW * SAFE_X * 0.5 : Math.max(0, (fitW * (1 - 2 * SAFE_X) - bw) / 2);
       camX += Math.max(-slackX, Math.min(slackX, (vw / 2 - (camX + active.x)) * 0.3));
     }
   }
@@ -322,7 +430,6 @@ export function GraphStream({ lines, from, to, current, revealed, palette, seed 
                   <>
                     <Branches
                         p={placed[i]}
-                        prev={placed[i - 1]}
                         shownCount={i > k ? 0 : soft ? Infinity : !drawn ? 0 : i === k ? revealed : Infinity}
                         soft={soft}
                         palette={palette}
@@ -504,7 +611,7 @@ const LineWords = memo(function LineWords({
   );
 });
 
-/** One line's edges and dots, plus the bridge branch from the previous line. */
+/** One line's edges and dots, plus the bridge branches from the vine tips it grows from. */
 type Edge = { key: string; d: string; pts: Pt[]; from: Pt; to: Pt; color: string; width: number; opacity: number; shown: boolean; duration: number };
 
 const DRAW_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
@@ -516,18 +623,22 @@ const DRAW_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const BLUR_STEPS = [1.2, 1.8, 2.6, 3.5, 4.6, 5.9, 7.4, 9.2];
 const BLUR_ALPHA = 0.085;
 
+/** A line's branch color: one of the palette's accents, made vivid. */
+const branchColor = (palette: Palette, i: number) => vivid(palette.accents[i % 3], 0.66);
+
 /** springy pop for the dots (slight overshoot), as a plain CSS curve */
 const POP_EASE = "cubic-bezier(0.34, 1.56, 0.64, 1)";
 
-function lineEdges(p: Placed, prev: Placed | undefined, shownCount: number, color: string): Edge[] {
+function lineEdges(p: Placed, shownCount: number, color: string, palette: Palette): Edge[] {
   const nodes = p.nodes;
   const edges: Edge[] = [];
   const r = rng(p.seed ^ 0x6a09e667);
-  if (prev) {
-    const a = prev.nodes[prev.last];
+  p.from.forEach((src, i) => {
+    const a = src.pt;
     const b = nodes[p.first];
-    edges.push({ key: "bridge", ...organicPath(a, b, r, 0.4), from: a, to: b, color, width: 3 * p.s, opacity: 1, shown: shownCount > 0, duration: 0.7 });
-  }
+    const c = src.color === p.color ? color : branchColor(palette, src.color);
+    edges.push({ key: `bridge${i}`, ...organicPath(a, b, r, 0.4), from: a, to: b, color: c, width: 3 * p.s, opacity: 1, shown: shownCount > 0, duration: 0.7 });
+  });
   nodes.forEach((n, i) => {
     const shown = i < shownCount;
     if (n.leaf) {
@@ -598,20 +709,18 @@ function WipeEdge({ e, x, y, w, h, d }: { e: Edge; x: number; y: number; w: numb
  */
 const Branches = memo(function Branches({
   p,
-  prev,
   shownCount,
   soft,
   palette,
 }: {
   p: Placed;
-  prev?: Placed;
   shownCount: number;
   soft: boolean;
   palette: Palette;
 }) {
-  const color = vivid(palette.accents[p.seed % 3], 0.66);
+  const color = branchColor(palette, p.color);
   const nodes = p.nodes;
-  const edges = lineEdges(p, prev, shownCount, color);
+  const edges = lineEdges(p, shownCount, color, palette);
 
   if (soft) {
     // a lingering line's branches go soft like its words, without a CSS filter: each

@@ -151,14 +151,15 @@ export const SAFE_Y = 0.08;
 /**
  * The tree for one line at the scale that shows the biggest type: tries a single row and
  * progressively more wrapping. `s` (<= 1) scales the layout to fit the safe area
- * (or `heightShare` of its height).
+ * (or `heightShare` of its height). `typeW` sizes the type and spacing (default: W), so a
+ * line fitted into a narrow lane still uses big type and wraps into more rows instead.
  */
-export function fitTree(words: LyricWord[], W: number, H: number, seed: number, heightShare = 1, organic = false) {
+export function fitTree(words: LyricWord[], W: number, H: number, seed: number, heightShare = 1, organic = false, typeW = W) {
   const availW = W * (1 - 2 * SAFE_X);
   const availH = H * (1 - 2 * SAFE_Y) * heightShare;
   let best: (ReturnType<typeof layout> & { s: number }) | null = null;
   for (const f of [Infinity, 2.2, 1.7, 1.35, 1.05, 0.8]) {
-    const l = layout(words, W, H, seed, availW * f, organic);
+    const l = layout(words, typeW, H, seed, availW * f, organic);
     const s = Math.min(1, availW / (l.box.r - l.box.l), availH / (l.box.b - l.box.t));
     if (!best || s > best.s + 0.02 || (Math.abs(s - best.s) <= 0.02 && l.rows < best.rows)) best = { ...l, s };
   }
