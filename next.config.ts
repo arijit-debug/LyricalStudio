@@ -14,6 +14,9 @@ const securityHeaders = [
 const IMAGE_CSP = "default-src 'none'; sandbox; frame-ancestors 'none'";
 
 const nextConfig: NextConfig = {
+  // Docker builds set NEXT_OUTPUT=standalone for a small self-contained server (see the
+  // Dockerfile); Vercel and `npm start` keep the default output
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   poweredByHeader: false,
   cacheComponents: true,
   async headers() {

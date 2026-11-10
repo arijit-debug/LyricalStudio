@@ -138,6 +138,24 @@ Open **http://localhost:3000** in your browser. That's it: search for a song and
 
 To stop the server, press **Ctrl C** in the terminal.
 
+### Or run it with Docker
+
+If you have [Docker](https://docs.docker.com/get-docker/), you don't need Node.js at all:
+
+```bash
+git clone https://github.com/arijit-debug/LyricalStudio.git
+cd LyricalStudio
+docker compose up -d
+```
+
+Open **http://localhost:3000**. The first build takes a few minutes. The image is small (Next.js standalone output) and runs as a non-root user.
+
+- **Settings:** optional; put them in `.env.local` (see [Settings](#settings-environment-variables)), then run `docker compose up -d` again.
+- **Update to a newer version:** `git pull && docker compose up -d --build`.
+- **Stop it:** `docker compose down`.
+- **Change the port:** edit `"3000:3000"` in `docker-compose.yml` (the first number is the port on your machine).
+- **Public server:** put it behind a reverse proxy, as described in [Putting it online](#putting-it-online-vercel).
+
 ### Optional: run the faster production version
 
 `npm run dev` is for development: it reloads when you edit code, but it's slower. To run the optimized version:
@@ -206,7 +224,7 @@ LyricalStudio is a standard [Next.js](https://nextjs.org) app. [Vercel](https://
 4. Click **Deploy**. Every push to `main` deploys automatically after that.
 5. If you host your own copy, update the links and contact details on the privacy page ([`src/app/privacy/page.tsx`](src/app/privacy/page.tsx)).
 
-Other Node.js hosts work too: run `npm run build`, then `npm start` (it listens on port 3000; set `PORT` to change that). Put it behind a reverse proxy (e.g. Nginx or Caddy) that sets `X-Real-IP` and `X-Forwarded-For` itself; otherwise visitors can fake those headers to get around the rate limits.
+Other hosts work too, with the [Docker image](#or-run-it-with-docker) or Node.js: run `npm run build`, then `npm start` (it listens on port 3000; set `PORT` to change that). Put it behind a reverse proxy (e.g. Nginx or Caddy) that sets `X-Real-IP` and `X-Forwarded-For` itself; otherwise visitors can fake those headers to get around the rate limits.
 
 ## How it works
 

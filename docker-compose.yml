@@ -1,0 +1,13 @@
+# Run LyricalStudio: `docker compose up -d`, then open http://localhost:3000
+# Optional settings go in .env.local (copy .env.example); none are required.
+services:
+  lyricalstudio:
+    build: .
+    image: lyricalstudio:latest
+    container_name: lyricalstudio
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env.local
+        required: false
+    restart: unless-stopped

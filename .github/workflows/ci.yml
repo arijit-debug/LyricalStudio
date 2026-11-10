@@ -28,3 +28,25 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the image
+        run: docker build -t lyricalstudio:ci .
+      - name: Start it and check it answers
+        run: |
+          docker run -d --name ls -p 3000:3000 lyricalstudio:ci
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://localhost:3000/; then echo "home page OK"; break; fi
+            sleep 2
+          done
+          curl -fsS -o /dev/null http://localhost:3000/privacy && echo "privacy page OK"
+          test "$(docker inspect -f '{{.Config.User}}' ls)" = "app" && echo "runs as non-root"
+          docker images lyricalstudio:ci --format "image size: {{.Size}}"
+      - name: Container logs
+        if: always()
+        run: docker logs ls || true

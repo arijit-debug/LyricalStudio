@@ -1,0 +1,13 @@
+# keep the build context small and never send secrets into the image
+.git
+.github
+.next
+node_modules
+.vercel
+.env*
+!.env.example
+docs
+*.md
+npm-debug.log*
+Dockerfile
+docker-compose.yml
