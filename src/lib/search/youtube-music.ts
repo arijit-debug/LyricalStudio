@@ -32,25 +32,44 @@ export function upscaleThumb(url?: string, size = 544) {
   return url;
 }
 
+/**
+ * youtubei.js gives text either as a plain string or as a Text object ({ text, runs, ... }),
+ * depending on the kind of item (e.g. home-feed cards use Text). Anything else is dropped,
+ * so an object can never reach the page (React can't render it and the whole app crashes).
+ */
+type TextLike = string | { text?: unknown } | null | undefined;
+export function plainText(v: TextLike): string | undefined {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object" && typeof v.text === "string") return v.text;
+  return undefined;
+}
+
+/** A YouTube video id. Feeds also hold podcasts, playlists and channels, whose ids aren't. */
+const VIDEO_ID = /^[\w-]{11}$/;
+
 type MusicItem = {
   id?: string;
-  title?: string;
+  title?: TextLike;
   item_type?: string;
-  artists?: { name: string }[];
-  authors?: { name: string }[];
-  album?: { name: string };
+  artists?: { name: TextLike }[];
+  authors?: { name: TextLike }[];
+  album?: { name: TextLike };
   duration?: { seconds: number };
   thumbnails?: { url: string }[];
 };
 
 function toTrack(item: MusicItem, kind: Track["kind"]): Track | null {
-  if (!item.id || !item.title) return null;
-  const artist = (item.artists ?? item.authors ?? []).map((a) => a.name).join(", ");
+  const title = plainText(item.title);
+  if (!item.id || !VIDEO_ID.test(item.id) || !title) return null;
+  const artist = (item.artists ?? item.authors ?? [])
+    .map((a) => plainText(a.name))
+    .filter(Boolean)
+    .join(", ");
   return {
     videoId: item.id,
-    title: item.title,
+    title,
     artist: artist || "Unknown artist",
-    album: item.album?.name,
+    album: plainText(item.album?.name),
     durationSec: item.duration?.seconds,
     artwork: upscaleThumb(item.thumbnails?.[0]?.url),
     kind,
@@ -106,8 +125,8 @@ export type HomeSection =
 type TwoRowItem = {
   id?: string;
   item_type?: string;
-  title?: { text?: string };
-  subtitle?: { text?: string };
+  title?: TextLike;
+  subtitle?: TextLike;
   thumbnail?: { url: string }[];
 };
 
@@ -117,8 +136,8 @@ export async function getHomeSections(): Promise<HomeSection[]> {
   const home = await yt.music.getHomeFeed();
   const out: HomeSection[] = [];
   for (const section of home.sections ?? []) {
-    const s = section as unknown as { header?: { title?: { text?: string } }; contents?: unknown[] };
-    const title = s.header?.title?.text;
+    const s = section as unknown as { header?: { title?: TextLike }; contents?: unknown[] };
+    const title = plainText(s.header?.title);
     const items = s.contents ?? [];
     if (!title || !items.length) continue;
     const songs = (items as MusicItem[])
@@ -133,8 +152,8 @@ export async function getHomeSections(): Promise<HomeSection[]> {
       .filter((i) => i.id && (i.item_type === "playlist" || i.item_type === "album"))
       .map((i) => ({
         id: i.id!,
-        title: i.title?.text ?? "Playlist",
-        subtitle: i.subtitle?.text,
+        title: plainText(i.title) ?? "Playlist",
+        subtitle: plainText(i.subtitle),
         artwork: upscaleThumb(i.thumbnail?.[0]?.url),
       }));
     if (playlists.length) out.push({ title, kind: "playlists", playlists });
@@ -144,10 +163,10 @@ export async function getHomeSections(): Promise<HomeSection[]> {
 
 type PanelVideo = {
   video_id?: string;
-  title?: { text?: string };
-  author?: string;
-  artists?: { name: string }[];
-  album?: { name: string };
+  title?: TextLike;
+  author?: TextLike;
+  artists?: { name: TextLike }[];
+  album?: { name: TextLike };
   duration?: { seconds: number };
   thumbnail?: { url: string }[];
 };
@@ -157,12 +176,18 @@ export async function getRadio(videoId: string): Promise<Track[]> {
   const yt = await getClient();
   const panel = await yt.music.getUpNext(videoId, true);
   return ((panel.contents ?? []) as unknown as PanelVideo[])
-    .filter((v) => v.video_id && v.title?.text)
+    .filter((v) => v.video_id && VIDEO_ID.test(v.video_id) && plainText(v.title))
     .map((v) => ({
       videoId: v.video_id!,
-      title: v.title!.text!,
-      artist: v.artists?.map((a) => a.name).join(", ") || v.author || "Unknown artist",
-      album: v.album?.name,
+      title: plainText(v.title)!,
+      artist:
+        v.artists
+          ?.map((a) => plainText(a.name))
+          .filter(Boolean)
+          .join(", ") ||
+        plainText(v.author) ||
+        "Unknown artist",
+      album: plainText(v.album?.name),
       durationSec: v.duration?.seconds,
       artwork: upscaleThumb(v.thumbnail?.[0]?.url),
       kind: "song" as const,

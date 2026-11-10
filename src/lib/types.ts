@@ -10,6 +10,15 @@ export type Track = {
   kind: "song" | "video";
 };
 
+/**
+ * Whether a stored value is a usable Track: a damaged or outdated entry in the browser's
+ * storage (e.g. text saved as an object) would crash the page when rendered.
+ */
+export function isTrack(v: unknown): v is Track {
+  const t = v as Partial<Track> | null;
+  return !!t && typeof t === "object" && typeof t.videoId === "string" && typeof t.title === "string" && typeof t.artist === "string";
+}
+
 export type LyricWord = {
   text: string;
   start: number; // seconds

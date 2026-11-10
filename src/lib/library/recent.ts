@@ -1,11 +1,12 @@
-import type { Track } from "@/lib/types";
+import { isTrack, type Track } from "@/lib/types";
 
 const RECENT_KEY = "ls:recent";
 const MAX_RECENT = 24;
 
 export function readRecent(): Track[] {
   try {
-    return JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as Track[];
+    const list: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(list) ? list.filter(isTrack) : [];
   } catch {
     return [];
   }
