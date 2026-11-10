@@ -1,13 +1,14 @@
 "use client";
 
 import { createContext, createElement, useCallback, useContext, useEffect, useState } from "react";
-import type { Track } from "@/lib/types";
+import { isTrack, type Track } from "@/lib/types";
 
 const LOCAL_KEY = "ls:likes";
 
 function readLocal(): Track[] {
   try {
-    return JSON.parse(localStorage.getItem(LOCAL_KEY) ?? "[]") as Track[];
+    const list: unknown = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? "[]");
+    return Array.isArray(list) ? list.filter(isTrack) : [];
   } catch {
     return [];
   }
